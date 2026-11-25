@@ -1,0 +1,19 @@
+{
+  "name": "Retro DS Web Emulator",
+  "short_name": "Retro DS",
+  "description": "Nintendo DS PWA emulator optimized for Android portrait & landscape play with direct touch screen support.",
+  "start_url": "./index.html",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#111318",
+  "theme_color": "#1b1e26",
+  "icons": [
+    {
+      "src": "./icons/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}
+

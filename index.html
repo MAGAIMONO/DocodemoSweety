@@ -1,0 +1,366 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+  <meta name="theme-color" content="#1b1e26" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <title>Retro DS Web Emulator</title>
+  <link rel="manifest" href="./manifest.json" />
+  <link rel="icon" type="image/svg+xml" href="./icons/icon.svg" />
+  <link rel="stylesheet" href="./css/style.css" />
+</head>
+<body data-theme="white" data-filter="crisp" data-layout="top-bottom">
+  <div id="app" class="ds-shell">
+
+    <!-- ==================== DUAL SCREEN SECTION ==================== -->
+    <section class="ds-screen-section" aria-label="DSデュアルスクリーン">
+      <div class="screen-stage" id="screen-stage" data-layout="top-bottom">
+        <div class="screen-bezel">
+          <div class="screen-viewport" id="screen-viewport">
+            <canvas id="game-canvas" width="256" height="420"></canvas>
+            <div class="lcd-overlay" aria-hidden="true"></div>
+            <div id="ds-hinge-gap" class="ds-hinge-gap" aria-hidden="true"></div>
+            <div id="stylus-indicator" class="stylus-indicator" aria-hidden="true"></div>
+
+            <!-- Boot Overlay -->
+            <div id="boot-overlay" class="boot-overlay">
+              <div class="boot-logo">
+                <span class="boot-title">RETRO <strong>DS</strong></span>
+                <span class="boot-sub">DUAL SCREEN WEB EMULATOR</span>
+              </div>
+              <div class="boot-actions">
+                <button type="button" id="btn-resume-last" class="boot-btn boot-btn-resume hidden">
+                  ▶ 前回の続きを再開
+                </button>
+                <button type="button" id="btn-pick-rom-main" class="boot-btn boot-btn-primary">
+                  DS ROM ファイルを開く
+                </button>
+                <button type="button" id="btn-open-library-main" class="boot-btn boot-btn-secondary">
+                  保存済みライブラリ
+                </button>
+              </div>
+              <p class="boot-hint">対応: .nds / .dsi / .zip（下画面は指で直接タッチ操作）</p>
+            </div>
+
+            <!-- Loading Spinner -->
+            <div id="loading-overlay" class="loading-overlay hidden">
+              <div class="spinner"></div>
+              <div id="loading-text" class="loading-text">コアを読み込み中...</div>
+            </div>
+
+            <!-- Status Toast -->
+            <div id="toast" class="toast hidden" role="status" aria-live="polite"></div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ==================== HINGE (QUICK BAR) ==================== -->
+    <section class="ds-hinge" aria-label="クイック操作バー">
+      <div class="hinge-cap hinge-cap-left"></div>
+      <div class="hinge-bar">
+        <button type="button" id="btn-library" class="hinge-btn" title="ROMライブラリ">
+          <span class="hinge-btn-label">ROM</span>
+        </button>
+        <button type="button" id="btn-quick-save" class="hinge-btn" title="クイックセーブ" disabled>
+          <span class="hinge-btn-label">SAVE</span>
+        </button>
+        <button type="button" id="btn-quick-load" class="hinge-btn" title="クイックロード" disabled>
+          <span class="hinge-btn-label">LOAD</span>
+        </button>
+        <button type="button" id="btn-layout-cycle" class="hinge-btn" title="画面レイアウト切替">
+          <span class="hinge-btn-label">上下</span>
+        </button>
+        <button type="button" id="btn-fast-forward" class="hinge-btn" title="倍速切替" disabled>
+          <span class="hinge-btn-label">2x</span>
+        </button>
+        <button type="button" id="btn-mute" class="hinge-btn" title="ミュート切替" disabled>
+          <span class="hinge-btn-label">SFX</span>
+        </button>
+        <button type="button" id="btn-menu" class="hinge-btn hinge-btn-accent" title="設定・セーブ管理">
+          <span class="hinge-btn-label">MENU</span>
+        </button>
+      </div>
+      <div class="hinge-cap hinge-cap-right"></div>
+    </section>
+
+    <!-- ==================== LOWER DECK (DS CONTROLS) ==================== -->
+    <section class="ds-deck" aria-label="DSコントローラー">
+      <!-- Top Row: L / MIC & LID / LEDs / R -->
+      <div class="deck-top-row">
+        <button type="button" class="ds-shoulder ds-shoulder-l" data-button="l" aria-label="Lボタン">
+          <span>L</span>
+        </button>
+
+        <div class="deck-center-tools">
+          <button type="button" class="ds-aux-btn" data-button="l3" title="マイクノイズ入力（長押し）" aria-label="マイク入力">
+            <span>MIC</span>
+          </button>
+          <button type="button" class="ds-aux-btn" data-button="l2" title="DSの蓋を閉じる（長押し）" aria-label="蓋閉じ">
+            <span>LID</span>
+          </button>
+        </div>
+
+        <div class="deck-top-right">
+          <div class="led-group" aria-hidden="true">
+            <span id="led-power" class="led led-power" title="電源"></span>
+            <span id="led-status" class="led led-status" title="倍速/保存"></span>
+          </div>
+          <button type="button" class="ds-shoulder ds-shoulder-r" data-button="r" aria-label="Rボタン">
+            <span>R</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- Main Row: D-Pad / Center Meta / ABXY Diamond -->
+      <div class="deck-main-row">
+        <!-- 8-way slide D-Pad -->
+        <div class="dpad-zone" id="dpad-zone" aria-label="十字キー">
+          <div class="dpad-well">
+            <div class="dpad-cross">
+              <div class="dpad-arm dpad-up" data-dir="up"><span class="dpad-arrow"></span></div>
+              <div class="dpad-arm dpad-down" data-dir="down"><span class="dpad-arrow"></span></div>
+              <div class="dpad-arm dpad-left" data-dir="left"><span class="dpad-arrow"></span></div>
+              <div class="dpad-arm dpad-right" data-dir="right"><span class="dpad-arrow"></span></div>
+              <div class="dpad-pivot"></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Center Brand + SELECT/START -->
+        <div class="deck-center-col">
+          <div class="ds-mic-dot" aria-hidden="true"></div>
+          <div class="meta-stack">
+            <div class="meta-btn-wrap">
+              <button type="button" class="ds-meta-btn" data-button="start" aria-label="STARTボタン">START</button>
+            </div>
+            <div class="meta-btn-wrap">
+              <button type="button" class="ds-meta-btn" data-button="select" aria-label="SELECTボタン">SELECT</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- 4-button ABXY Diamond -->
+        <div class="abxy-zone" id="abxy-zone" aria-label="ABXYボタン">
+          <div class="abxy-well abxy-well-x">
+            <button type="button" class="ds-round-btn btn-x" data-button="x" aria-label="Xボタン"><span>X</span></button>
+          </div>
+          <div class="abxy-well abxy-well-y">
+            <button type="button" class="ds-round-btn btn-y" data-button="y" aria-label="Yボタン"><span>Y</span></button>
+          </div>
+          <div class="abxy-well abxy-well-b">
+            <button type="button" class="ds-round-btn btn-b" data-button="b" aria-label="Bボタン"><span>B</span></button>
+          </div>
+          <div class="abxy-well abxy-well-a">
+            <button type="button" class="ds-round-btn btn-a" data-button="a" aria-label="Aボタン"><span>A</span></button>
+          </div>
+        </div>
+      </div>
+    </section>
+  </div>
+
+  <!-- Hidden file inputs -->
+  <input type="file" id="rom-file-input" accept=".nds,.dsi,.ids,.zip" hidden />
+  <input type="file" id="sav-file-input" accept=".sav,.dsv,.srm" hidden />
+  <input type="file" id="bios-file-input" accept=".bin" multiple hidden />
+
+  <!-- ==================== MODAL: ROM LIBRARY ==================== -->
+  <div id="modal-library" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="modal-library-title">
+    <div class="modal-backdrop" data-close-modal="modal-library"></div>
+    <div class="modal-sheet">
+      <div class="modal-header">
+        <h2 id="modal-library-title">DS ROM ライブラリ</h2>
+        <button type="button" class="modal-close" data-close-modal="modal-library" aria-label="閉じる">✕</button>
+      </div>
+      <div class="modal-body">
+        <button type="button" id="btn-add-rom" class="action-btn action-btn-primary full-width">
+          ＋ 端末から DS ROM（.nds / .zip）を追加して起動
+        </button>
+        <div id="rom-list" class="rom-list">
+          <p class="empty-msg">保存されたDS ROMはまだありません</p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ==================== MODAL: MENU & SETTINGS ==================== -->
+  <div id="modal-menu" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="modal-menu-title">
+    <div class="modal-backdrop" data-close-modal="modal-menu"></div>
+    <div class="modal-sheet">
+      <div class="modal-header">
+        <h2 id="modal-menu-title">Retro DS メニュー</h2>
+        <button type="button" class="modal-close" data-close-modal="modal-menu" aria-label="閉じる">✕</button>
+      </div>
+      <div class="modal-body">
+        <!-- Game Controls -->
+        <div class="menu-section">
+          <h3>ゲーム操作</h3>
+          <div class="btn-grid-2">
+            <button type="button" id="btn-pause-resume" class="action-btn" disabled>一時停止</button>
+            <button type="button" id="btn-restart" class="action-btn" disabled>リセット</button>
+            <button type="button" id="btn-fullscreen" class="action-btn">全画面切替</button>
+            <button type="button" id="btn-exit-game" class="action-btn action-btn-danger" disabled>ゲーム終了</button>
+          </div>
+        </div>
+
+        <!-- Save States (3 slots) -->
+        <div class="menu-section">
+          <h3>ステートセーブ（どこでもセーブ）</h3>
+          <div id="state-slots" class="state-slots"></div>
+        </div>
+
+        <!-- Battery Save (.sav) -->
+        <div class="menu-section">
+          <h3>ゲーム内セーブ（.sav / SRAM）</h3>
+          <p class="menu-desc">ゲーム内セーブは自動保存されます。バックアップや他環境への移行に書き出し/読み込みが可能です。</p>
+          <div class="btn-grid-2">
+            <button type="button" id="btn-export-sav" class="action-btn" disabled>.sav 書き出し</button>
+            <button type="button" id="btn-import-sav" class="action-btn" disabled>.sav 読み込み</button>
+          </div>
+        </div>
+
+        <!-- DS Core & Performance -->
+        <div class="menu-section">
+          <h3>DSコア・パフォーマンス設定</h3>
+          <label class="setting-row">
+            <span>エミュレータコア</span>
+            <select id="select-core" class="setting-select">
+              <option value="desmume2015">DeSmuME 2015（軽量・BIOS不要）</option>
+              <option value="desmume">DeSmuME（標準・BIOS不要）</option>
+              <option value="melonds">melonDS（高精度・BIOS推奨）</option>
+            </select>
+          </label>
+          <label class="setting-row">
+            <span>画面レイアウト</span>
+            <select id="select-layout" class="setting-select">
+              <option value="top-bottom">上下標準（縦2画面）</option>
+              <option value="hybrid-top">上画面メイン（ハイブリッド）</option>
+              <option value="hybrid-bottom">下画面メイン（ハイブリッド）</option>
+              <option value="left-right">左右並び（横持ち向け）</option>
+              <option value="top-only">上画面のみ</option>
+              <option value="bottom-only">下画面のみ（タッチ専念）</option>
+            </select>
+          </label>
+          <label class="setting-row">
+            <span>上下画面の隙間（ヒンジ）</span>
+            <select id="select-gap" class="setting-select">
+              <option value="0">なし（密着）</option>
+              <option value="24">狭め</option>
+              <option value="36">標準（実機風・推奨）</option>
+              <option value="56">広め（実機DS Lite相当）</option>
+            </select>
+          </label>
+          <label class="setting-row">
+            <span>フレームスキップ（DeSmuME）</span>
+            <select id="select-frameskip" class="setting-select">
+              <option value="0">0（滑らか・負荷高）</option>
+              <option value="1">1（バランス・推奨）</option>
+              <option value="2">2（軽量）</option>
+              <option value="3">3（最軽量）</option>
+            </select>
+          </label>
+        </div>
+
+        <!-- Optional BIOS Management -->
+        <div class="menu-section">
+          <h3>BIOSファイル（任意・melonDS向け）</h3>
+          <p class="menu-desc">DeSmuMEでは不要です。melonDSを使う場合、手持ちの bios7.bin / bios9.bin / firmware.bin を登録すると安定します。</p>
+          <div id="bios-list" class="bios-list"></div>
+          <button type="button" id="btn-add-bios" class="action-btn full-width" style="margin-top:8px;">
+            ＋ BIOSファイルを選択して登録
+          </button>
+        </div>
+
+        <!-- DS Lite Shell Color -->
+        <div class="menu-section">
+          <h3>本体カラー</h3>
+          <div class="theme-picker" id="theme-picker">
+            <button type="button" class="theme-chip" data-theme="white">
+              <span class="swatch swatch-white"></span>ホワイト
+            </button>
+            <button type="button" class="theme-chip" data-theme="black">
+              <span class="swatch swatch-black"></span>ブラック
+            </button>
+            <button type="button" class="theme-chip" data-theme="navy">
+              <span class="swatch swatch-navy"></span>ネイビー
+            </button>
+            <button type="button" class="theme-chip" data-theme="ice">
+              <span class="swatch swatch-ice"></span>アイスブルー
+            </button>
+            <button type="button" class="theme-chip" data-theme="crimson">
+              <span class="swatch swatch-crimson"></span>クリムゾン
+            </button>
+          </div>
+        </div>
+
+        <!-- Display & Touch Settings -->
+        <div class="menu-section">
+          <h3>表示・操作設定</h3>
+          <label class="setting-row">
+            <span>液晶フィルター</span>
+            <select id="select-filter" class="setting-select">
+              <option value="crisp">くっきり（ドットそのまま）</option>
+              <option value="lcd">DS液晶ドット格子</option>
+              <option value="warm">レトロ暖色＋格子</option>
+            </select>
+          </label>
+          <label class="setting-row">
+            <span>下画面タッチ位置ガイド</span>
+            <input type="checkbox" id="toggle-touch-ripple" checked />
+          </label>
+          <label class="setting-row">
+            <span>ボタン振動フィードバック</span>
+            <input type="checkbox" id="toggle-vibrate" checked />
+          </label>
+          <label class="setting-row">
+            <span>倍速スピード</span>
+            <select id="select-ff-speed" class="setting-select">
+              <option value="2">2倍速</option>
+              <option value="3">3倍速</option>
+              <option value="4">4倍速</option>
+            </select>
+          </label>
+          <div class="setting-slider-row">
+            <div class="setting-slider-head">
+              <span>ボタンサイズ</span>
+              <span id="val-pad-scale" class="setting-val">100%</span>
+            </div>
+            <input type="range" id="range-pad-scale" min="85" max="120" step="5" value="100" />
+          </div>
+          <div class="setting-slider-row">
+            <div class="setting-slider-head">
+              <span>操作エリアの上下位置</span>
+              <span id="val-deck-offset" class="setting-val">0px</span>
+            </div>
+            <input type="range" id="range-deck-offset" min="-24" max="24" step="4" value="0" />
+          </div>
+          <button type="button" id="btn-reset-layout" class="action-btn full-width" style="margin-top:8px;">
+            ボタン配置を初期値に戻す
+          </button>
+        </div>
+
+        <!-- Storage & Offline Status -->
+        <div class="menu-section">
+          <h3>オフライン・データ保護</h3>
+          <p id="storage-status" class="menu-desc">ストレージ保護状態を確認中...</p>
+        </div>
+
+        <!-- Keyboard / Gamepad Info -->
+        <div class="menu-section">
+          <h3>キーボード / Bluetoothコントローラー</h3>
+          <p class="menu-desc">
+            下画面はマウスクリック／指タッチでそのまま操作できます。<br />
+            キーボード: 矢印/WASD=十字キー / Z,K=B / X,L=A / C,J=Y / V,I=X / Q=L / E=R / M=MIC / U=蓋閉じ / Enter=START / Shift=SELECT
+          </p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script type="module" src="./js/app.js"></script>
+</body>
+</html>
+

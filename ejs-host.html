@@ -1,0 +1,149 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>Retro DS Core Host</title>
+  <style>
+    html, body {
+      margin: 0;
+      padding: 0;
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      background: #050608;
+      touch-action: none;
+    }
+    #game {
+      width: 100%;
+      height: 100%;
+      position: relative;
+      overflow: hidden;
+    }
+    /* Hide EmulatorJS built-in UI & virtual gamepad so our DS Lite shell handles controls cleanly */
+    .ejs_menu_bar,
+    .ejs_menu_button,
+    .ejs_virtualGamepad_parent,
+    .ejs_start_button,
+    .ejs_context_menu,
+    .ejs_ad_iframe,
+    .ejs_cheat_parent,
+    .ejs_settings_parent {
+      display: none !important;
+      pointer-events: none !important;
+    }
+    canvas {
+      touch-action: none !important;
+      image-rendering: pixelated;
+      image-rendering: crisp-edges;
+    }
+  </style>
+</head>
+<body>
+  <div id="game"></div>
+  <script>
+    window.bootEJS = function (cfg) {
+      return new Promise((resolve, reject) => {
+        const timeout = setTimeout(() => {
+          reject(new Error('DSコアの起動がタイムアウトしました（ネットワーク接続を確認してください）'));
+        }, 45000);
+
+        window.EJS_player = '#game';
+        window.EJS_core = cfg.core || 'desmume2015';
+        window.EJS_gameName = cfg.gameName || 'ds-game';
+        window.EJS_gameUrl = cfg.romUrl;
+        window.EJS_pathtodata = 'https://cdn.emulatorjs.org/stable/data/';
+        window.EJS_startOnLoaded = true;
+        window.EJS_disableDatabases = true;
+        window.EJS_disableLocalStorage = true;
+        window.EJS_VirtualGamepadSettings = [];
+        window.EJS_Buttons = {
+          playPause: false,
+          restart: false,
+          mute: false,
+          settings: false,
+          fullscreen: false,
+          saveState: false,
+          loadState: false,
+          screenRecord: false,
+          gamepad: false,
+          cheat: false,
+          volume: false,
+          saveSavFiles: false,
+          loadSavFiles: false,
+          quickSave: false,
+          quickLoad: false,
+          screenshot: false,
+          cacheManager: false,
+          exitEmulation: false
+        };
+        window.EJS_defaultOptions = cfg.defaultOptions || {};
+        if (cfg.biosUrl) {
+          window.EJS_biosUrl = cfg.biosUrl;
+        }
+
+        window.EJS_onGameStart = function () {
+          clearTimeout(timeout);
+          try {
+            const emu = window.EJS_emulator;
+            const gm = emu && emu.gameManager;
+            if (gm) {
+              // Ensure RetroArch keyboard doesn't fight our parent controller
+              if (typeof gm.setKeyboardEnabled === 'function') {
+                gm.setKeyboardEnabled(false);
+              }
+              // Inject saved SRAM (.sav) if provided
+              if (cfg.initialSram && gm.FS && typeof gm.getSaveFilePath === 'function') {
+                try {
+                  const savePath = gm.getSaveFilePath();
+                  const dir = savePath.substring(0, savePath.lastIndexOf('/'));
+                  if (dir) gm.mkdir(dir);
+                  gm.FS.writeFile(savePath, cfg.initialSram);
+                  if (typeof gm.loadSaveFiles === 'function') {
+                    gm.loadSaveFiles();
+                  }
+                } catch (e) {
+                  console.warn('SRAM inject warning:', e);
+                }
+              }
+              // Inject optional BIOS files into /system if provided
+              if (cfg.biosFiles && cfg.biosFiles.length > 0 && gm.FS) {
+                try {
+                  gm.mkdir('/system');
+                  for (const b of cfg.biosFiles) {
+                    gm.FS.writeFile('/system/' + b.fileName, b.bytes);
+                  }
+                } catch (e) {
+                  console.warn('BIOS inject warning:', e);
+                }
+              }
+              // Restore seamless layout-switch state if provided
+              if (cfg.initialState && typeof gm.loadState === 'function') {
+                setTimeout(() => {
+                  try {
+                    gm.loadState(cfg.initialState);
+                  } catch (e) {
+                    console.warn('Initial state restore warning:', e);
+                  }
+                }, 350);
+              }
+            }
+          } catch (e) {
+            console.warn('onGameStart hook warning:', e);
+          }
+          resolve(window.EJS_emulator);
+        };
+
+        const script = document.createElement('script');
+        script.src = 'https://cdn.emulatorjs.org/stable/data/loader.js';
+        script.onerror = () => {
+          clearTimeout(timeout);
+          reject(new Error('EmulatorJS ローダーの読み込みに失敗しました'));
+        };
+        document.body.appendChild(script);
+      });
+    };
+  </script>
+</body>
+</html>
+
